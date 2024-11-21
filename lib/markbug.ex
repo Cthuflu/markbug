@@ -3,6 +3,8 @@ defmodule Markbug do
   Fast Elixir Markdown Parser
   """
 
+  import Markbug.Decode.Token, only: [squash_stack: 1, correct_tokens: 1, make_blocks: 1]
+
   # @default_opts [
   #   html: [
   #     enabled: false,
@@ -15,6 +17,13 @@ defmodule Markbug do
   """
   def decode(str, opts \\ []) do
     # {:ok, opts} = Keyword.validate(opts, @default_opts)
-    Markbug.Decode.parse(str, opts)
+    with {:ok, tokens} <- Markbug.Decode.parse(str, opts),
+         ast <- tokens
+                |> squash_stack()
+                |> correct_tokens()
+                |> make_blocks()
+    do
+      {:ok, ast}
+    end
   end
 end

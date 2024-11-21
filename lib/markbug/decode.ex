@@ -1,6 +1,5 @@
 defmodule Markbug.Decode do
   import Markbug.Util
-  import Markbug.Decode.Token
 
   defguardp is_digit(c)
     when c in ?0..?9
@@ -55,33 +54,16 @@ defmodule Markbug.Decode do
         footnotes: :cohost,
       } |> Map.merge(opts),
       html: %{
-        tags: %{
-          mode: :allow,
-          allowlist: ~w[b i a p u br span div link
-                       table thead tbody tfoot th tr td article blockquote caption
-                       center col colgroup details figcaption figure optgroup option
-                       hr h1 h2 h3 h4 h5 h6 ol ul li strike],
-          denylist: ~w[script style iframe object header html head title body footer frame]
-        },
-        attributes: %{
-          mode: :allow,
-          allowlist: ~w[class style rel target],
-          denylist: []
-        }
+        sanitizer: Markbug.HTML.Sanitizer,
+        opts: nil
       },
       leaf: false,
       leaf_type: nil,
     }
 
-    try do
-      container(str, str, 0, [], state)
-    catch
-      {:error, where} ->
-        {:error, where}
-    else
-      value ->
-        {:ok, value}
-    end
+    state = %{state | html: state.html.sanitizer.init(state.html) }
+
+    container(str, str, 0, [], state)
   end
   def parse(str, opts) when is_list(opts) do
     opts = opts
@@ -146,8 +128,6 @@ defmodule Markbug.Decode do
 
           _rest ->
             if c == ?* do
-              # stack = stack
-              #   |> push_stack_mult({:left, c}, len)
               thematic_break(rest, original, skip, stack, %{state | match_char: c, match_len: len}, len)
             else
               setext_header(rest, original, skip, stack, %{state | match_char: c}, len)
@@ -425,8 +405,6 @@ defmodule Markbug.Decode do
       <<sym::utf8, rest::binary>> when sym in ~c[*_] ->
         term = text_part(original, skip, len)
         skip = skip + len
-        # <<sym::utf8>> = binary_part(original, skip, 1)
-        # sym = <<sym::utf8>>
         stack = stack
           |> push_stack(term)
         stack = case check_last(original, skip) do
@@ -599,7 +577,7 @@ defmodule Markbug.Decode do
 
   defp escape?("\\" <> rest, original, skip, stack, state) do
     case rest do
-      <<char::utf8, rest::binary>> when char in ~c[!"#$%&'()*+,-./:;<=>?@\[\\\]^_`{|}~] ->
+      <<char::utf8, rest::binary>> when is_punctuation(char) ->
         stack = stack
           |> push_stack({:text, <<char::utf8>>})
         text(rest, original, skip + 2, stack, state, 0)
@@ -680,7 +658,6 @@ defmodule Markbug.Decode do
         if match_len == count do
           skip = skip + count
           term = track_part(original, skip, len)
-            # |> String.replace(~r/(\r\n|\n)/, " ")
           stack = stack
             |> push_stack({:text, {:code_span, term}})
           text(rest, original, skip + len + count, stack, %{state | match_len: 0}, 0)
@@ -810,7 +787,6 @@ defmodule Markbug.Decode do
         stack = stack
           |> pop_stack()
           |> push_stack({:comment, term})
-          # |> push_stack(:"-->")
         text(rest, original, skip + 3, stack, state, 0)
 
       <<_c::utf8, rest::binary>> ->
@@ -822,7 +798,6 @@ defmodule Markbug.Decode do
         stack = stack
           |> pop_stack()
           |> push_stack({:comment, term})
-          # |> push_stack(:"-->")
         text(data, original, skip, stack, state)
     end
   end
@@ -886,12 +861,12 @@ defmodule Markbug.Decode do
         term = binary_part(original, skip, len)
         with {:ok, tag_name} <- check_tag_list(term, state) do
           stack = stack
-          |> push_stack({:tag_name, tag_name})
+            |> push_stack({:tag_name, tag_name})
           html_tag(data, original, skip + len, stack, state)
         else
           {:error, _not_allowed} ->
             stack = stack
-            |> push_stack({:text, term})
+              |> push_stack({:text, term})
             text(data, original, skip + len, stack, state)
         end
     end
@@ -1008,10 +983,7 @@ defmodule Markbug.Decode do
       |> push_stack(term)
     case data do
       "" ->
-        stack
-        |> squash_stack()
-        |> correct_tokens()
-        |> make_blocks()
+        {:ok, stack}
       _ ->
         container(data, original, skip, stack, state)
     end
@@ -1126,36 +1098,22 @@ defmodule Markbug.Decode do
   #   end)
   # end
 
-  defp check_tag_list(tag, _state = %{html: _html_opts = %{tags: %{mode: mode, allowlist: allowlist, denylist: denylist}}}) do
-    case mode do
-      :allow ->
-        tag in allowlist
-
-      :deny ->
-        tag in denylist
-    end
-    |> if do
-      {:ok, tag}
+  defp check_tag_list(tag, %{html: opts = %{sanitizer: sanitizer}}) when is_atom(sanitizer) do
+    if function_exported?(sanitizer, :check_tag, 2) do
+      sanitizer.check_tag(opts, tag)
     else
-      {:error, :not_allowed}
+      {:ok, tag}
     end
   end
   defp check_tag_list(tag, _state) do
     {:ok, tag}
   end
 
-  defp check_attribute_list(attr, _state = %{html: _html_opts = %{attributes: %{mode: mode, allowlist: allowlist, denylist: denylist}}}) do
-    case mode do
-      :allow ->
-        attr in allowlist
-
-      :deny ->
-        attr in denylist
-    end
-    |> if do
-      {:ok, attr}
+  defp check_attribute_list(attr, %{html: opts = %{sanitizer: sanitizer}}) when is_atom(sanitizer) do
+    if function_exported?(sanitizer, :check_attribute, 2) do
+      sanitizer.check_attribute(opts, attr)
     else
-      {:error, :not_allowed}
+      {:ok, attr}
     end
   end
   defp check_attribute_list(attr, _state) do
