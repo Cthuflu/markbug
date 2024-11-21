@@ -86,7 +86,7 @@ defmodule Markbug.Decode.Token do
 
       [text = {:text, _text} | stack] ->
         {stack, paragraph} = paragraph(stack, [text])
-        node = {:paragraph, paragraph}
+        node = {:p, paragraph}
         {stack, node}
 
       [{:code_indent_line, line} | stack] ->
