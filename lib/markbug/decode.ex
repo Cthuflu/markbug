@@ -1,4 +1,7 @@
 defmodule Markbug.Decode do
+  @moduledoc """
+  Markdown scanner, produces tokens
+  """
   import Markbug.Util
 
   defguardp is_digit(c)
@@ -461,18 +464,9 @@ defmodule Markbug.Decode do
           text(rest, original, skip, stack, state, len + 1)
         end
 
-      <<char::utf8, rest::binary>> when char <= 0xFF ->
+      <<char::utf8, rest::binary>> ->
         state = state |> reset_newline()
-        text(rest, original, skip, stack, state, len + 1)
-      <<char::utf8, rest::binary>> when char <= 0x7FF ->
-        state = state |> reset_newline()
-        text(rest, original, skip, stack, state, len + 2)
-      <<char::utf8, rest::binary>> when char <= 0xFFFF ->
-        state = state |> reset_newline()
-        text(rest, original, skip, stack, state, len + 3)
-      <<_char::utf8, rest::binary>> ->
-        state = state |> reset_newline()
-        text(rest, original, skip, stack, state, len + 4)
+        text(rest, original, skip, stack, state, len + codepoint_size(char))
 
       <<_::binary>> ->
         term = text_part(original, skip, len)
@@ -668,8 +662,8 @@ defmodule Markbug.Decode do
         code_span(rest, original, skip, stack, state |> set_newline(), len + 2)
       "\n" <> rest ->
         code_span(rest, original, skip, stack, state |> set_newline(), len + 1)
-      <<_c::utf8, rest::binary>> ->
-        code_span(rest, original, skip, stack, state, len + 1)
+      <<c::utf8, rest::binary>> ->
+        code_span(rest, original, skip, stack, state, len + codepoint_size(c))
       _data ->
         backtrack(original, skip, stack, %{state | match_len: 0}, match_len)
     end
@@ -699,8 +693,8 @@ defmodule Markbug.Decode do
         else
           code_fence(rest, original, skip, stack, state, len + count)
         end
-      <<_char::utf8, rest::binary>> ->
-        code_fence(rest, original, skip, stack, state, len + 1)
+      <<char::utf8, rest::binary>> ->
+        code_fence(rest, original, skip, stack, state, len + codepoint_size(char))
       _data ->
         # Handle empty
         term = track_part(original, skip, len)
@@ -744,7 +738,7 @@ defmodule Markbug.Decode do
         when c not in 0..0x20 # Ascii control characters and space
          and c != 0x7F
       ->
-        autolink_uri(rest, original, skip, stack, state, len + 1)
+        autolink_uri(rest, original, skip, stack, state, len + codepoint_size(c))
 
       _data ->
         text(data, original, skip, stack, state, len)
@@ -772,8 +766,8 @@ defmodule Markbug.Decode do
           |> push_stack({:comment, ""})
         text(rest, original, skip + 3, stack, state, 0)
 
-      <<_c::utf8, rest::binary>> ->
-        comment(rest, original, skip, stack, state, 1)
+      <<c::utf8, rest::binary>> ->
+        comment(rest, original, skip, stack, state, codepoint_size(c))
 
       _data ->
         text(data, original, skip, stack, state, 0)
@@ -789,8 +783,8 @@ defmodule Markbug.Decode do
           |> push_stack({:comment, term})
         text(rest, original, skip + 3, stack, state, 0)
 
-      <<_c::utf8, rest::binary>> ->
-        comment(rest, original, skip, stack, state, len + 1)
+      <<c::utf8, rest::binary>> ->
+        comment(rest, original, skip, stack, state, len + codepoint_size(c))
 
       _data ->
         term = track_part(original, skip, len)
@@ -828,7 +822,7 @@ defmodule Markbug.Decode do
       <<c::utf8, rest::binary>>
         when c not in ~c[>]
       ->
-        html_declaration(rest, original, skip, stack, state, len + 1)
+        html_declaration(rest, original, skip, stack, state, len + codepoint_size(c))
 
       ">" <> rest ->
         term = track_part(original, skip, len)
@@ -1006,8 +1000,8 @@ defmodule Markbug.Decode do
         {data, len}
       "\r\n" <> _rest ->
         {data, len}
-      <<_char::utf8, rest::binary>> ->
-        seek_eol(rest, len + 1)
+      <<char::utf8, rest::binary>> ->
+        seek_eol(rest, len + codepoint_size(char))
       _data ->
         {data, len}
     end
@@ -1021,7 +1015,7 @@ defmodule Markbug.Decode do
   defp scan(data = "\n\n" <> _rest, _scan_fun, len), do: {data, len}
   defp scan(data = <<c::utf8, rest::binary>>, scan_fun, len) do
     if scan_fun.(c) do
-      scan(rest, scan_fun, len + 1)
+      scan(rest, scan_fun, len + codepoint_size(c))
     else
       {data, len}
     end
@@ -1134,14 +1128,26 @@ defmodule Markbug.Decode do
   @compile {:inline, check_last: 2}
   def check_last(original, skip)
   def check_last(original, skip) do
-    last_pos = skip - 1
+    check_last_wide(original, skip, 1)
+  end
+
+  @compile {:inline, check_last_wide: 3}
+  defp check_last_wide(_original, _skip, size) when size > 4, do: nil
+  defp check_last_wide(original, skip, size) do
+    last_pos = skip - size
     if last_pos < 0 do
       nil
     else
-      <<c::utf8>> = binary_part(original, last_pos, 1)
-      c
+      case binary_part(original, last_pos, size) do
+        <<c::utf8>> ->
+          c
+        _else ->
+          check_last_wide(original, skip, size + 1)
+      end
     end
   end
 
+  @compile {:inline, codepoint_size: 1}
+  defp codepoint_size(c), do: byte_size(<<c::utf8>>)
 
 end
