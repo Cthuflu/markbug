@@ -26,4 +26,15 @@ defmodule Markbug do
       {:ok, ast}
     end
   end
+
+  def decode!(str, opts \\ []) do
+    case decode(str, opts) do
+      {:ok, ast} -> ast
+      _error -> throw Exception
+    end
+  end
+
+  def ast_to_html(ast) do
+    Markbug.HTML.ast_to_html(ast)
+  end
 end
