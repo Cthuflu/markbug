@@ -281,11 +281,18 @@ defmodule Markbug.Decode.Token do
 
   defp lazy_continue(stack, acc) do
     case stack do
+      [text = {:text, _text} | stack] ->
+        lazy_continue(stack, [text | acc])
+
       [:"\n", text = {:text, _text} | stack] ->
         lazy_continue(stack, [text, {:text, " "} | acc])
 
       [:"\n", {:indent, _indent}, text = {:text, _text} | stack] ->
         lazy_continue(stack, [text, {:text, " "} | acc])
+
+      [{:>, tag, attrs} | stack] ->
+        {stack, content} = html(stack, tag, [])
+        lazy_continue(stack, [{:text, {:html, tag, attrs, content}} | acc])
 
       _stack ->
         {stack, acc |> Enum.reverse() |> List.flatten()}
@@ -374,8 +381,12 @@ defmodule Markbug.Decode.Token do
   end
 
   def squash_stack([:>, {:uri, uri}, {:scheme, scheme}, :< | stack], inner_stack) do
-    full_uri = scheme <> uri
-    term = {:link, %{href: full_uri}}
+    full_uri = "#{scheme}:#{uri}"
+    term = {:text, {:link, %{href: full_uri}}}
+    squash_stack(stack, [term | inner_stack])
+  end
+  def squash_stack([:>, {:email, email}, :< | stack], inner_stack) do
+    term = {:text, {:link, %{href: "mailto:#{email}", caption: email}}}
     squash_stack(stack, [term | inner_stack])
   end
 

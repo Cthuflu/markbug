@@ -11,6 +11,10 @@ defmodule Markbug.Decode do
     when c in ?a..?z
       or c in ?A..?Z
 
+  defguardp is_ascii_alnum(c)
+    when is_ascii_letter(c)
+      or is_digit(c)
+
   defguardp is_punctuation(c)
     when c in ?!..?@
       or c in ?[..?`
@@ -564,8 +568,56 @@ defmodule Markbug.Decode do
         autolink_scheme(data, original, skip, stack, state, len)
 
       _data ->
-        text(data, original, skip, stack, state, len)
+        autolink_email(data, original, skip, stack, state, len)
 
+    end
+  end
+
+  defp autolink_email(data, original, skip, stack, state, len) do
+    {result, rest, len} = email_name(data, len)
+    case {result, rest} do
+      {:ok, ">" <> rest} ->
+        term = track_part(original, skip, len)
+        skip = skip + len + 1
+        stack = stack
+          |> push_stack({:email, term})
+          |> push_stack(:">")
+
+        text(rest, original, skip, stack, state)
+
+      {_result, rest} ->
+        text(rest, original, skip, stack, state, len)
+    end
+  end
+
+  defguardp is_email_name(c)
+    when is_ascii_alnum(c)
+      or c in ~c[.!#$%&'*+/=?^_`{|}~-]
+
+  defp email_name(data, len) do
+    {rest, len} = scan(data, &is_email_name/1, len)
+    case rest do
+      <<?@, c::utf8, rest::binary>> when is_ascii_alnum(c) ->
+        email_domain(rest, len + 2)
+
+      _rest ->
+        {:error, rest, len}
+    end
+  end
+
+  defp email_domain(data, len) do
+    {rest, scan_len} = scan(data, &is_ascii_alnum/1, 0)
+    len = len + scan_len
+    case rest do
+      "-" <> rest when scan_len > 1 ->
+        {rest, scan_dash} = scan(rest, fn c -> c == ?- end, 1)
+        email_domain(rest, len + scan_dash)
+
+      "." <> rest when scan_len > 1 ->
+        email_domain(rest, len + 1)
+
+      _rest ->
+        {:ok, rest, len}
     end
   end
 

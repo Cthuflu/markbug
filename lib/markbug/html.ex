@@ -7,7 +7,7 @@ defmodule Markbug.HTML do
     ast
     |> Enum.map(&node_to_html/1)
   end
-  def node_to_html(str) when is_binary(str), do: str
+  def node_to_html(str) when is_binary(str), do: escape_text(str)
   def node_to_html(ast_node) do
     case ast_node do
       {:header, num, content} ->
@@ -19,7 +19,7 @@ defmodule Markbug.HTML do
       {:text, content} ->
         node_to_html(content)
 
-      # TODO: Separate emphasis handling
+      # TODO: Module-based emphasis/strong handling
       {:em, sym, content} ->
         emphasis(sym, content)
 
@@ -34,19 +34,22 @@ defmodule Markbug.HTML do
         html("a", [{"href", "#mdfn-#{node_to_name(content)}"}], node_to_html(content))
 
       {:footnote, anchor, %{caption: caption}} ->
-        html("p", [{"id", "mdfn-#{node_to_name(anchor)}"}], [
-          html("span", [], node_to_html(anchor)),
+        node_name = "mdfn-#{node_to_name(anchor)}"
+        html("p", [{"id", node_name}], [
+          html("span", [{"class", "footnote"}],
+            html("a", [{"href", node_name}], node_to_html(anchor))
+          ),
           ":",
-          html("span", [], node_to_html(caption))
+          html("span", [{"class", "footnote-caption"}], node_to_html(caption))
         ])
 
       {:comment, comment} ->
-        ["<!--", comment, "-->"]
+        ["<!-- ", comment, " -->"]
 
       {:image, %{href: src, caption: caption}} ->
-        html("div", [], [
+        html("article", [{"class", "image-caption"}], [
           html("img", [{"src", src}], []),
-          html("p", [], node_to_html(caption))
+          html("p", [], node_to_html(caption)),
         ])
 
       {:image, %{href: src}} ->
@@ -55,17 +58,39 @@ defmodule Markbug.HTML do
       {:link, %{caption: caption, href: src}} ->
         html("a", [{"href", src}], node_to_html(caption))
 
+      {:link, %{href: src}} ->
+        html("a", [{"href", src}], node_to_html(src))
+
       {:html, tag, attrs, content} ->
         html(tag, attrs, node_to_html(content))
 
       {:code_span, content} ->
-        html("code", [], content)
+        html("code", [], escape_text(content))
 
       {:blockquote, content} ->
         html("blockquote", [], node_to_html(content))
 
       {:code_block, content} ->
         html("pre", [], escape_text(content))
+
+      {:ol, start, _mark, items} ->
+        html("ol", [{"start", start}], node_to_html(items))
+
+      {:li, content} ->
+        html("li", [], node_to_html(content))
+
+      {:ul, mark, _tight?, content} ->
+        html("ul", [{"style", "list-style-type: '#{charbin(mark)} ';"}], node_to_html(content))
+
+      {:br, char} ->
+        html("hr", [{"style", "content: '#{charbin(char)}'"}], [])
+
+      # TODO: Cleanup
+      {:setext, char, _str} ->
+        html("hr", [{"style", "content: '#{charbin(char)}'"}], [])
+
+      :"\n" ->
+        "\n"
 
     end
   end
@@ -75,7 +100,7 @@ defmodule Markbug.HTML do
     |> Enum.map(&escape_text/1)
   end
   defp escape_text(text) do
-    String.replace(text, ~r/<>&"'/, &escape_char/1)
+    String.replace(text, ~r/[<>&"']/, &escape_char/1)
   end
 
   defp escape_char("<"), do: "&lt;"
@@ -101,15 +126,15 @@ defmodule Markbug.HTML do
     end
   end
 
+  @compile {:inline, charbin: 1}
   defp charbin(sym) when is_binary(sym), do: sym
   defp charbin(sym), do: <<sym::utf8>>
 
-
   defp node_to_name(ast) do
-    ast
-    |> node_to_html()
+    [ast
+    |> node_to_html()]
     |> List.flatten()
-    |> Enum.map(fn el -> String.replace(el, ~r/[\<\>\s\n\t\(\)\/]+/, "-") end)
+    |> Enum.map(fn el -> String.replace(el, ~r/[\<\>\s\n\t\(\)\/]+/, "-") |> String.downcase() end)
   end
 
   defp emphasis(sym, content) do
@@ -120,7 +145,7 @@ defmodule Markbug.HTML do
       "~~" -> {"s", []}
     end
 
-    html(tag, attrs, node_to_html(content))
+    html(tag, attrs, [charbin(sym), node_to_html(content), charbin(sym)])
   end
 
   defp strong(sym, content) do
@@ -130,19 +155,38 @@ defmodule Markbug.HTML do
       "||" -> {"span", [{"class", "spoiler"}]}
       "~~" -> {"s", []}
     end
-    html(tag, attrs, node_to_html(content))
+    html(tag, attrs, [charbin(sym), node_to_html(content), charbin(sym)])
   end
 
   defp html(tag, attrs, []) do
-    ["<", tag, attributes(attrs), "/>"]
+    [tag, attributes(attrs)]
+    |> wrap("<", "/>")
+  end
+  defp html(tag, attrs, content) do
+    content
+    |> wrap(open_tag(tag, attrs), close_tag(tag))
   end
 
-  defp html(tag, attrs, content) do
-    ["<", tag, attributes(attrs), ">", content, "</", tag, ">"]
+  defp open_tag(tag, []), do: ["<", tag, ">"]
+  defp open_tag(tag, attrs) do
+    [tag, attributes(attrs)]
+    |> wrap("<", ">")
+  end
+
+  defp close_tag(tag) do
+    tag
+    |> wrap("</",">")
   end
 
   defp attributes(attrs) do
     attrs
     |> Enum.map_join(fn {key, value} -> [" ", key, "=\"",  escape_text(value), "\""] end)
+  end
+
+  def wrap(content, mark_l, mark_r) do
+    [mark_l, content, mark_r]
+  end
+  def wrap(content, mark) do
+    [mark, content, mark]
   end
 end
