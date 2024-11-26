@@ -441,6 +441,13 @@ defmodule Markbug.Decode do
           |> push_stack(term)
         escape?(data, original, skip, stack, state)
 
+      <<c::utf8, rest::binary>> when c in ~c[&] ->
+        term = text_part(original, skip, len)
+        skip = skip + len
+        stack = stack
+          |> push_stack(term)
+        character_reference(rest, original, skip, stack, state)
+
       <<c::utf8, _rest::binary>> when c in ~c[!\[\]\)] ->
         term = text_part(original, skip, len)
         skip = skip + len
@@ -477,6 +484,58 @@ defmodule Markbug.Decode do
         continue(data, original, skip + len, stack, state, term)
     end
   end
+
+  defp character_reference(data, original, skip, stack, state) do
+    case data do
+      "#" <> rest ->
+        numeric_character_reference(rest, original, skip, stack, state)
+
+      _rest ->
+        text(data, original, skip, stack, state, 1)
+    end
+  end
+
+  defp numeric_character_reference(data, original, skip, stack, state) do
+    case data do
+      <<c::utf8, rest::binary>> when c in ~c[Xx] ->
+        hex_character_reference(rest, original, skip, stack, state)
+
+      "0" <> rest ->
+        {rest, len} = scan(rest, fn c -> c == ?0 end, 1)
+        case rest do
+          ";" <> rest ->
+            stack = stack
+              |> push_stack({:text, <<0xFFFD::utf8>>})
+            text(rest, original, skip + 2 + len + 1, stack, state)
+
+          _rest ->
+            text(rest, original, skip, stack, state, len + 2)
+        end
+
+      _rest ->
+        text(data, original, skip, stack, state, 1)
+    end
+  end
+
+  defp hex_character_reference(data, original, skip, stack, state) do
+    case data do
+      "0" <> rest ->
+        {rest, len} = scan(rest, fn c -> c == ?0 end, 1)
+        case rest do
+          ";" <> rest ->
+            stack = stack
+              |> push_stack({:text, <<0xFFFD::utf8>>})
+            text(rest, original, skip + 3 + len + 1, stack, state)
+
+          _rest ->
+            text(rest, original, skip, stack, state, len + 3)
+        end
+
+      _rest ->
+        text(data, original, skip, stack, state, 3)
+    end
+  end
+
 
   defp link?(data, original, skip, stack, state) do
     state = state |> set_newline()
