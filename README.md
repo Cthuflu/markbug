@@ -21,15 +21,16 @@ end
 ## Basic Usage
 
 ```elixir
-iex(1)> Markbug.decode("""
+iex> Markbug.ast("""
 # Foo Bar
 
 _According to all known laws of aviation_, *there is no way a bee should be able to fly*.
 """)
+
 {:ok,
  [
    {:header, 1, [text: "Foo Bar"]},
-   {:paragraph,
+   {:p,
     [
       {:em, 95, ["According to all known laws of aviation"]},
       ", ",
@@ -37,6 +38,40 @@ _According to all known laws of aviation_, *there is no way a bee should be able
       "."
     ]}
  ]}
+```
+
+```elixir
+iex> Markbug.html("""
+# Foo Bar
+ 
+_According to all known laws of aviation_, *there is no way a bee should be able to fly*.
+""")
+
+[
+  ["<", "article", ">"],
+  [
+    [["<", "h1", ">"], ["Foo Bar"], ["</", "h1", ">"]],
+    [
+      ["<", "p", ">"],
+      [
+        [
+          ["<", "i", ">"],
+          ["According to all known laws of aviation"],
+          ["</", "i", ">"]
+        ],
+        ", ",
+        [
+          ["<", "b", ">"],
+          ["*", ["there is no way a bee should be able to fly"], "*"],
+          ["</", "b", ">"]
+        ],
+        "."
+      ],
+      ["</", "p", ">"]
+    ]
+  ],
+  ["</", "article", ">"]
+]
 ```
 
 ## Notes
