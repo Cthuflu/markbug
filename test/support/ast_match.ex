@@ -14,6 +14,7 @@ defmodule MarkbugTest.ASTMatch do
   def em(ty, content), do: {:em, ty, List.wrap(content)}
   def strong(ty, content), do: {:strong, ty, List.wrap(content)}
   def code_span(content), do: {:code_span, content}
+  def h(level, content), do: {:header, level, [text: content]}
 
   def ast_test(text) do
     Markbug.ast!(text)

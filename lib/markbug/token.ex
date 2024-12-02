@@ -439,7 +439,7 @@ defmodule Markbug.Token do
         ?- -> 2
       end
 
-    squash_stack(stack, [{:header, header_type, text} | inner_stack])
+    squash_stack(stack, [{:header, header_type, [{:text, text}]} | inner_stack])
   end
 
   def squash_stack(stack, [em = {em_type, _mark, _text} | inner_stack])
