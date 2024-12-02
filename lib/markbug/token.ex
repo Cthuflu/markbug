@@ -23,6 +23,12 @@ defmodule Markbug.Token do
       [{:text, t1}, {:text, t2} | stack] ->
         correct_tokens([{:text, [t1, t2] |> List.flatten()} | stack])
 
+      [{em_strong, mark, content} | stack] when em_strong in ~w[em strong]a ->
+        correct_tokens([{:text, {em_strong, mark, content}} | stack])
+
+      [{:code_span, content} | stack] ->
+        correct_tokens([{:text, {:code_span, content}} | stack])
+
       [node | stack] ->
         [node | correct_tokens(stack)]
     end
