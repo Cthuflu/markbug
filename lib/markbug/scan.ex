@@ -482,7 +482,7 @@ defmodule Markbug.Scan do
 
       <<char::utf8, rest::binary>> ->
         state = state |> reset_newline()
-        stack = if len == 0 do
+        stack = if (len == 0) and not is_punctuation(char) and not is_whitespace(char) do
             stack
             |> push_stack(:nonspace)
           else

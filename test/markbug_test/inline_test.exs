@@ -68,4 +68,9 @@ defmodule MarkbugTest.InlineTest do
     assert_ast "&#X00;&amp;", p(<<0xFFFD::utf8,"&amp;"::binary>>)
   end
 
+  test "combined" do
+    assert_ast "_According to all known laws of aviation_, *there is no way a bee should be able to fly*.",
+      p([em(?_, "According to all known laws of aviation"), ", ", em(?*, "there is no way a bee should be able to fly"), "."])
+  end
+
 end
