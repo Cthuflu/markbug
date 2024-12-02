@@ -308,6 +308,8 @@ defmodule Markbug.Scan do
     case len do
       len when len in [1, 2] ->
         # TODO: Figure out a way around backtracking
+        # NOTES: this could be done by tracking start/end points and putting
+        #        those on the stack instead of extracting content
         code_span(rest, original, skip, stack, state, 0)
       _ ->
         code_fence(rest, original, skip + len, stack, state, 0)
@@ -322,7 +324,7 @@ defmodule Markbug.Scan do
         skip = skip + len
         stack = stack
           |> push_stack(term)
-          |> push_stack({:text, <<0xFF, 0xFD>>})
+          |> push_stack({:text, <<0xFFFD::utf8>>})
 
         text(rest, original, skip + 1, stack, state, 0)
 
@@ -443,7 +445,6 @@ defmodule Markbug.Scan do
         stack = stack
           |> push_stack(term)
         escape?(data, original, skip, stack, state)
-        # emit_token(&escape?/5, [data, original, skip, stack, state, len])
 
       <<c::utf8, rest::binary>> when c in ~c[&] ->
         term = text_part(original, skip, len)
@@ -451,7 +452,6 @@ defmodule Markbug.Scan do
         stack = stack
           |> push_stack(term)
         character_reference(rest, original, skip, stack, state)
-        # emit_token(&character_reference/5, [rest, original, skip, stack, state, len])
 
       <<c::utf8, _rest::binary>> when c in ~c[!\[\]\)] ->
         term = text_part(original, skip, len)
@@ -699,11 +699,11 @@ defmodule Markbug.Scan do
         text(rest, original, skip + 2, stack, state, 0)
       "\r\n" <> rest ->
         stack = stack
-          |> push_stack(:"\n")
+          |> push_stack({:br})
         newline(rest, original, skip + 3, stack, state)
       "\n" <> rest ->
         stack = stack
-          |> push_stack(:"\n")
+          |> push_stack({:br})
         newline(rest, original, skip + 2, stack, state)
       _rest ->
         text(rest, original, skip, stack, state, 1)

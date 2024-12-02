@@ -290,6 +290,9 @@ defmodule Markbug.Token do
       [text = {:text, _text} | stack] ->
         lazy_continue(stack, [text | acc])
 
+      [{:br}, :"\n", {:text, text} | stack] ->
+        lazy_continue(stack, [{:text, text}, {:br} | acc])
+
       [:"\n", text = {:text, _text} | stack] ->
         lazy_continue(stack, [text, {:text, " "} | acc])
 

@@ -51,4 +51,21 @@ defmodule MarkbugTest.InlineTest do
     assert_ast "||foo|bar", p("||foo|bar")
   end
 
+  test "escapes" do
+    assert_ast <<0x00>>, p(<<0xFFFD::utf8>>)
+    assert_ast "\\!\\\"\\#\\$\\%\\&\\'\\(\\)\\*\\+\\,\\-\\.\\/\\:\\;\\<\\=\\>\\?\\@\\[\\\\]\\^\\_\\`\\{\\|\\}\\~",
+      p("!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~")
+
+    assert_ast """
+    foo\\
+    bar
+    """, p(["foo", {:br}, "bar"])
+
+    assert_ast "&nbsp&amp", p("&nbsp&amp")
+    assert_ast "&nbsp;&amp;", p("&nbsp;&amp;")
+    assert_ast "&#0;&amp;", p(<<0xFFFD::utf8,"&amp;"::binary>>)
+    assert_ast "&#X0;&amp;", p(<<0xFFFD::utf8,"&amp;"::binary>>)
+    assert_ast "&#X00;&amp;", p(<<0xFFFD::utf8,"&amp;"::binary>>)
+  end
+
 end
