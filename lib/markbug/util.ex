@@ -24,4 +24,7 @@ defmodule Markbug.Util do
         get_line_tokens(stack, [node | acc])
     end
   end
+
+  @compile {:inline, codepoint_size: 1}
+  def codepoint_size(c), do: byte_size(<<c::utf8>>)
 end

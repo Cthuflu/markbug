@@ -1,4 +1,4 @@
-defmodule Markbug.Decode.Token do
+defmodule Markbug.Token do
   import Markbug.Util
 
   def correct_tokens(stack) do

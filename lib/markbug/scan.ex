@@ -1,4 +1,4 @@
-defmodule Markbug.Decode do
+defmodule Markbug.Scan do
   @moduledoc """
   Markdown scanner, produces tokens
   """
@@ -42,8 +42,8 @@ defmodule Markbug.Decode do
   @option_key_trans Enum.zip(@option_no_keys, @option_keys)
     |> Map.new()
 
-  def parse(str, opts \\ %{})
-  def parse(str, opts) when is_map(opts) do
+  def scan(str, opts \\ %{})
+  def scan(str, opts) when is_map(opts) do
     state = %{
       indent: 0,
       edge: 0,
@@ -72,7 +72,7 @@ defmodule Markbug.Decode do
 
     container(str, str, 0, [], state)
   end
-  def parse(str, opts) when is_list(opts) do
+  def scan(str, opts) when is_list(opts) do
     opts = opts
       |> Enum.map(fn
         key when key in @option_no_keys ->
@@ -84,7 +84,7 @@ defmodule Markbug.Decode do
           pair
       end)
       |> Map.new()
-    parse(str, opts)
+    scan(str, opts)
   end
 
   defp container(data, original, skip, stack, state) do
@@ -134,7 +134,7 @@ defmodule Markbug.Decode do
             end
 
           _rest ->
-            if c == ?* do
+            if c in ~c[*_] do
               thematic_break(rest, original, skip, stack, %{state | match_char: c, match_len: len}, len)
             else
               setext_header(rest, original, skip, stack, %{state | match_char: c}, len)
@@ -198,7 +198,7 @@ defmodule Markbug.Decode do
     end
   end
 
-  defp thematic_break(rest, original, skip, stack, state = %{match_char: c, match_len: match_len}, len) do
+  defp thematic_break(rest, original, skip, stack, state = %{match_char: c, match_len: match_len}, len) when c in ~c[*-_] do
     {rest, more_len} = scan(rest, &(&1 == c), 0)
     len = len + more_len
     match_len = match_len + more_len
@@ -250,6 +250,9 @@ defmodule Markbug.Decode do
         end
     end
   end
+  defp thematic_break(data, original, skip, stack, state, len) do
+    text(data, original, skip, stack, state, len)
+  end
 
   defp atx_header("#" <> rest, original, skip, stack, state, len) do
     len = len + 1
@@ -272,7 +275,7 @@ defmodule Markbug.Decode do
     end
   end
 
-  defp setext_header(rest, original, skip, stack, state = %{match_char: match_char}, len) do
+  defp setext_header(rest, original, skip, stack, state = %{match_char: match_char}, len) when match_char in ~c[-=] do
     case rest do
       <<^match_char::utf8, rest::binary>> ->
         setext_header(rest, original, skip, stack, state, len + 1)
@@ -295,10 +298,10 @@ defmodule Markbug.Decode do
         text(rest, original, skip, stack, %{state | match_char: nil}, len)
     end
   end
+  defp setext_header(data, original, skip, stack, state, len) do
+    text(data, original, skip, stack, %{state | match_char: nil}, len)
+  end
 
-  # defp backtick("`" <> rest, original, skip, stack, state, len) do
-  #   backtick(rest, original, skip, stack, state, len + 1)
-  # end
   defp backtick(data, original, skip, stack, state, len) do
     {rest, len} = count_char(data, ?`, len)
     state = %{state | match_len: len, match_char: ?`}
@@ -440,6 +443,7 @@ defmodule Markbug.Decode do
         stack = stack
           |> push_stack(term)
         escape?(data, original, skip, stack, state)
+        # emit_token(&escape?/5, [data, original, skip, stack, state, len])
 
       <<c::utf8, rest::binary>> when c in ~c[&] ->
         term = text_part(original, skip, len)
@@ -447,6 +451,7 @@ defmodule Markbug.Decode do
         stack = stack
           |> push_stack(term)
         character_reference(rest, original, skip, stack, state)
+        # emit_token(&character_reference/5, [rest, original, skip, stack, state, len])
 
       <<c::utf8, _rest::binary>> when c in ~c[!\[\]\)] ->
         term = text_part(original, skip, len)
@@ -680,7 +685,7 @@ defmodule Markbug.Decode do
     end
   end
 
-  defp escape?("\\" <> rest, original, skip, stack, state) do
+  def escape?("\\" <> rest, original, skip, stack, state) do
     case rest do
       <<char::utf8, rest::binary>> when is_punctuation(char) ->
         stack = stack
@@ -1189,20 +1194,6 @@ defmodule Markbug.Decode do
   defp pop_stack([_term | stack]), do: stack
   defp pop_stack(stack), do: stack
 
-
-  # defp serialize_text({:text, text}) do
-  #   text
-  #   |> List.wrap()
-  #   |> List.flatten()
-  #   |> Enum.chunk_by(&is_binary/1)
-  #   |> Enum.map(fn
-  #     [head | _tail] = wordlist when is_binary(head) ->
-  #       Enum.join(wordlist)
-  #     other_node ->
-  #       other_node
-  #   end)
-  # end
-
   defp check_tag_list(tag, %{html: opts = %{sanitizer: sanitizer}}) when is_atom(sanitizer) do
     if function_exported?(sanitizer, :check_tag, 2) do
       sanitizer.check_tag(opts, tag)
@@ -1258,7 +1249,5 @@ defmodule Markbug.Decode do
     end
   end
 
-  @compile {:inline, codepoint_size: 1}
-  defp codepoint_size(c), do: byte_size(<<c::utf8>>)
 
 end
