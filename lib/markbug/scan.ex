@@ -482,6 +482,12 @@ defmodule Markbug.Scan do
 
       <<char::utf8, rest::binary>> ->
         state = state |> reset_newline()
+        stack = if len == 0 do
+            stack
+            |> push_stack(:nonspace)
+          else
+            stack
+          end
         text(rest, original, skip, stack, state, len + codepoint_size(char))
 
       <<_::binary>> ->
@@ -1151,12 +1157,23 @@ defmodule Markbug.Scan do
     when term == []
     when term == nil
   do
+    # Skip putting empty terms on the stack
     stack
   end
   defp push_stack(stack, :space) do
+    # Marks previous tokens on stack as non-left-flanking
     case stack do
       [{:left, term} | stack] ->
         [{:text, char_or_bin(term)} | push_stack(stack, :space)]
+      _stack ->
+        stack
+    end
+  end
+  defp push_stack(stack, :nonspace) do
+    # Marks previous tokens on stack as non-right-flanking
+    case stack do
+      [{:right, ?_} | stack] ->
+        [{:text, char_or_bin(?_)} | push_stack(stack, :nonspace)]
       _stack ->
         stack
     end
@@ -1165,6 +1182,7 @@ defmodule Markbug.Scan do
     when is_integer(term)
     when is_binary(term)
   do
+    # Determine if term is flanking
     case stack do
       [] ->
         [{:left, term} | stack]
