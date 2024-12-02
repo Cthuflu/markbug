@@ -1,6 +1,7 @@
 defmodule Markbug.HTML do
-  def ast_to_html(ast) do
+  def from_ast(ast) do
     node_to_html(ast)
+    |> wrap_tag("article")
   end
 
   def node_to_html(ast) when is_list(ast) do
@@ -100,7 +101,7 @@ defmodule Markbug.HTML do
     |> Enum.map(&escape_text/1)
   end
   defp escape_text(text) do
-    String.replace(text, ~r/[<>&"']/, &escape_char/1)
+    String.replace(text, ~r/\\?[<>&"']/, &escape_char/1)
   end
 
   defp escape_char("<"), do: "&lt;"
@@ -167,6 +168,15 @@ defmodule Markbug.HTML do
     |> wrap(open_tag(tag, attrs), close_tag(tag))
   end
 
+  defp wrap_tag(content, tag) do
+    content
+    |> wrap(open_tag(tag, []), close_tag(tag))
+  end
+  defp wrap_tag(content, tag, attrs) do
+    content
+    |> wrap(open_tag(tag, attrs), close_tag(tag))
+  end
+
   defp open_tag(tag, []), do: ["<", tag, ">"]
   defp open_tag(tag, attrs) do
     [tag, attributes(attrs)]
@@ -180,9 +190,34 @@ defmodule Markbug.HTML do
 
   defp attributes(attrs) do
     attrs
-    |> Enum.map_join(fn {key, value} -> [" ", key, "=\"",  escape_text(value), "\""] end)
+    |> Enum.map_join(fn {key, value} -> [" ", key, "=\"",  safe_quote(value), "\""] end)
   end
 
+  defp safe_quote(content) do
+    _safe_quote_next(content, content, 0, [], 0)
+  end
+
+  defp _safe_quote_next(rest, original, skip, stack, len) do
+    case rest do
+      "\\\"" <> rest ->
+        _safe_quote_next(rest, original, skip, stack, len + 2)
+
+      "\"" <> rest ->
+        term = binary_part(original, skip, len)
+        skip = skip + len
+        _safe_quote_next(rest, original, skip, ["\\\"", term | stack], 0)
+
+      <<c::utf8, rest::binary>> ->
+        _safe_quote_next(rest, original, skip, stack, len + Markbug.Util.codepoint_size(c))
+
+      <<>> ->
+        term = binary_part(original, skip, len)
+        [term | stack]
+        |> Enum.reverse()
+    end
+  end
+
+  @compile {:inline, wrap: 2, wrap: 3}
   def wrap(content, mark_l, mark_r) do
     [mark_l, content, mark_r]
   end
