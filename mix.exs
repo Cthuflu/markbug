@@ -11,6 +11,7 @@ defmodule Markbug.MixProject do
       app: :markbug,
       version: @version,
       elixir: "~> 1.17",
+      elixirc_paths: elixirc_paths(Mix.env()),
       deps: deps(),
 
       # Hex
@@ -30,6 +31,10 @@ defmodule Markbug.MixProject do
     [
     ]
   end
+
+  # Specifies which paths to compile per environment.
+  defp elixirc_paths(:test), do: ["lib", "test/support"]
+  defp elixirc_paths(_), do: ["lib"]
 
   def hex_package do
     [
