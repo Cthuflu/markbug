@@ -171,7 +171,7 @@ defmodule Markbug.Token do
       {stack, next_indent, next_acc} ->
         {stack, line} = seek_newline_token(stack, true)
         case next_indent - indent do
-          res when res <= indent ->
+          res when res < indent ->
             indented(stack, indent, [line, next_acc | acc])
 
           res ->

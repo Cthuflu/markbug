@@ -11,10 +11,22 @@ defmodule MarkbugTest.ASTMatch do
   end
 
   def p(content), do: {:p, List.wrap(content)}
+
   def em(ty, content), do: {:em, ty, List.wrap(content)}
+
   def strong(ty, content), do: {:strong, ty, List.wrap(content)}
+
   def code_span(content), do: {:code_span, content}
+
   def h(level, content), do: {:header, level, [text: content]}
+
+  def ul(mark, content), do: ul(mark, true, content)
+  def ul(mark, tight?, content), do: {:ul, mark, tight?, Enum.map(content, fn c -> li(c) end)}
+
+  def ol(start, sym, content), do: {:ol, start, sym, Enum.map(content, fn c -> li(c) end)}
+
+  def li(res = {:li, _content}), do: res
+  def li(content), do: {:li, List.wrap(content)}
 
   def ast_test(text) do
     Markbug.ast!(text)
